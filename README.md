@@ -5,7 +5,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/<user>/ping-tester.git
+git clone https://github.com/retaker/ping-tester.git
 cd ping-tester
 ```
 
@@ -17,8 +17,11 @@ cd ping-tester
 # 监控单个主机
 python ping_tester.py baidu.com
 
-# 监控多个主机
+# 监控多个主机（自动检测 IPv4/IPv6，首次成功后锁定）
 python ping_tester.py baidu.com 8.8.8.8 google.com
+
+# 指定特定主机使用 IPv6（--ipv6 之后的主机强制 IPv6）
+python ping_tester.py baidu.com --ipv6 bing.com
 
 # 竞技游戏配置
 python ping_tester.py baidu.com 8.8.8.8 --latency-ms 150 --interval 1
@@ -31,9 +34,12 @@ python ping_tester.py baidu.com 8.8.8.8 --latency-ms 150 --interval 1
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `HOST ...` | (必填) | 一个或多个域名或 IP，IPv4/IPv6 自动检测 |
+| `--ipv6 HOST ...` | - | `--ipv6` 之后的主机强制使用 IPv6 |
 | `--latency-ms` | 200 | 高延迟阈值 (ms)，超过视为 SLOW |
 | `--volume` | 100 | 提示音音量 0-100 |
 | `--interval` | 1 | 每轮 ping 间隔秒数 |
+
+> 默认情况下，每个主机会在首次 ping 成功后锁定该地址族，后续不再切换。使用 `--ipv6` 可以强制其后的主机使用 IPv6。
 
 ## 输出说明
 
@@ -86,7 +92,7 @@ A CLI tool for continuous multi-host network connectivity monitoring with IPv4/I
 ## Installation
 
 ```bash
-git clone https://github.com/<user>/ping-tester.git
+git clone https://github.com/retaker/ping-tester.git
 cd ping-tester
 ```
 
@@ -98,8 +104,11 @@ Requires Python 3.8+. No `pip install` needed — uses only stdlib and the bundl
 # Single host
 python ping_tester.py baidu.com
 
-# Multiple hosts
+# Multiple hosts (auto-detect IPv4/IPv6, locks on first success)
 python ping_tester.py baidu.com 8.8.8.8 google.com
+
+# Force specific hosts to use IPv6
+python ping_tester.py baidu.com --ipv6 bing.com
 
 # Competitive gaming
 python ping_tester.py baidu.com 8.8.8.8 --latency-ms 150 --interval 1
@@ -112,9 +121,12 @@ Press `Ctrl+C` to stop.
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `HOST ...` | (required) | One or more hostnames or IPs; IPv4/IPv6 auto-detected |
+| `--ipv6 HOST ...` | - | Hosts after `--ipv6` are forced to use IPv6 |
 | `--latency-ms` | 200 | Latency threshold in ms; exceeded → SLOW |
 | `--volume` | 100 | Beep volume 0–100 |
 | `--interval` | 1 | Seconds between ping rounds |
+
+> By default, each host locks onto the first successful address family. Use `--ipv6` to force subsequent hosts to use IPv6.
 
 ## Output
 
