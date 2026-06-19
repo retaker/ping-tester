@@ -294,7 +294,7 @@ def main():
     print(f'  Full log: {logger.full}')
     print(f'  Fail log: {logger.fail}')
     print()
-    header = (f'{"Time":<22} {"Host":<20} {"Target (IP)":<42} '
+    header = (f'{"Time":<22} {"Host":<24} {"Target (IP)":<42} '
               f'{"Result":<28} Loss')
     print(header)
     print('-' * len(header))
@@ -353,16 +353,18 @@ def main():
         COLOR_BEEP1 = '\033[38;5;178m'   # dark gold — readable on light & dark
         COLOR_BEEP3 = '\033[38;5;203m'   # salmon red — readable on light & dark
 
+        host_info = f'[{family}] [{label}]'
+
         # Console
         with print_lock:
             if pending_action == 'beep_1':
-                print(f'{COLOR_BEEP1}{now:<22} [{family}] [{label}] {target:<42} '
+                print(f'{COLOR_BEEP1}{now:<22} {host_info:<24} {target:<42} '
                       f'{result_str:<28} {loss_str}{COLOR_RESET}')
             elif pending_action == 'beep_3':
-                print(f'{COLOR_BEEP3}{now:<22} [{family}] [{label}] {target:<42} '
+                print(f'{COLOR_BEEP3}{now:<22} {host_info:<24} {target:<42} '
                       f'{result_str:<28} {loss_str}{COLOR_RESET}')
             else:
-                print(f'{now:<22} [{family}] [{label}] {target:<42} '
+                print(f'{now:<22} {host_info:<24} {target:<42} '
                       f'{result_str:<28} {loss_str}')
 
         # Full log
