@@ -3,10 +3,11 @@
 Multi-host ping monitor with IPv4/IPv6 auto-detection, latency tracking and alerting.
 
 Usage:
-    python ping_tester.py HOST [HOST ...] [--latency-ms 200] [--volume 100] [--interval 1]
+    python ping_tester.py HOST [HOST ...] [--ipv6 HOST ...] [--latency-ms 200] [--volume 100] [--interval 1]
 
 Example:
     python ping_tester.py baidu.com google.com --latency-ms 150 --volume 80
+    python ping_tester.py baidu.com --ipv6 bing.com
 """
 
 import argparse
@@ -133,13 +134,17 @@ def resolve_ip(domain, use_ipv6=False):
         return None
 
 
-def ping_host(domain):
+def ping_host(domain, force_ipv6=None):
     """Ping domain with auto IPv4/IPv6 detection.
-    Returns (success: bool, detail: str, ip: str, family: str)."""
+    Returns (success: bool, detail: str, ip: str, family: str).
+    force_ipv6: None=auto, True=IPv6 only, False=IPv4 only."""
     last_detail = 'Ping failed'
     last_ip = domain
     last_family = 'IPv4'
-    for use_ipv6 in (False, True):
+    families = (True,) if force_ipv6 is True else \
+               (False,) if force_ipv6 is False else \
+               (False, True)
+    for use_ipv6 in families:
         ip = resolve_ip(domain, use_ipv6)
         if ip is None:
             continue
@@ -223,25 +228,37 @@ class Logger:
 def main():
     parser = argparse.ArgumentParser(
         description='Multi-host ping monitor with IPv4/IPv6 auto-detection')
-    parser.add_argument('hosts', nargs='+', help='Hostnames or IPs to ping')
     parser.add_argument('--latency-ms', type=int, default=200,
                         help='Latency threshold in ms (default: 200)')
     parser.add_argument('--volume', type=int, default=100,
                         help='Beep volume 0-100 (default: 100)')
     parser.add_argument('--interval', type=float, default=1.0,
                         help='Seconds between ping rounds (default: 1)')
-    args = parser.parse_args()
+    known, unknown = parser.parse_known_args()
 
-    vol = max(0, min(100, args.volume))
-    threshold = max(1, args.latency_ms)
-    interval = max(0.1, args.interval)
+    # Process remaining args: hosts with optional --ipv6 marker
+    hosts = []
+    host_ipv6 = {}
+    current_ipv6 = None  # None = auto
+    for arg in unknown:
+        if arg == '--ipv6':
+            current_ipv6 = True
+        else:
+            hosts.append(arg)
+            host_ipv6[arg] = current_ipv6
+    if not hosts:
+        parser.error('at least one HOST is required')
+
+    vol = max(0, min(100, known.volume))
+    threshold = max(1, known.latency_ms)
+    interval = max(0.1, known.interval)
 
     # Logger
     ts = datetime.now().strftime('%Y%m%d-%H%M%S')
     logger = Logger(ts)
 
     print(f'Ping Tester  |  {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    print(f'  Hosts  : {", ".join(args.hosts)}')
+    print(f'  Hosts  : {", ".join(hosts)}')
     print(f'  Latency threshold: {threshold}ms')
     print(f'  Interval: {interval}s')
     print(f'  Vol     : {vol}%')
@@ -263,7 +280,7 @@ def main():
     lost = {}
     counter_lock = threading.Lock()
 
-    for host in args.hosts:
+    for host in hosts:
         alerts[host] = AlertState()
         fail_buf[host] = []
         sent[host] = 0
@@ -332,11 +349,16 @@ def main():
                 threading.Thread(target=play_alert_repeat,
                                  args=(vol,), daemon=True).start()
 
+    force_ipv6 = host_ipv6  # dict: host -> None (auto) or True (IPv6)
+
     def worker(host, offset):
         if offset:
             time.sleep(offset)
+        prefer = force_ipv6.get(host)  # None=auto, True=IPv6 forced
         while running:
-            ok, detail, ip, family = ping_host(host)
+            ok, detail, ip, family = ping_host(host, prefer)
+            if ok and force_ipv6.get(host) is None:
+                prefer = (family == 'IPv6')  # lock in first successful family
             latency_ms = 0
             if ok:
                 m = re.match(r'(\d+\.?\d*)', detail)
@@ -350,10 +372,10 @@ def main():
 
     # Start threads, staggered to spread load
     threads = []
-    for i, host in enumerate(args.hosts):
+    for i, host in enumerate(hosts):
         t = threading.Thread(
             target=worker,
-            args=(host, i * (interval / len(args.hosts))),
+            args=(host, i * (interval / len(hosts))),
             daemon=True)
         t.start()
         threads.append(t)
