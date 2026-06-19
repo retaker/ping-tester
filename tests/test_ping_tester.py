@@ -97,3 +97,30 @@ class TestAlertState:
         assert s.fails == 0
         # next single fail should still be isolated
         assert s.record_fail() is None
+
+    def test_silenced_one_ok_does_not_reset_fails(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        for _ in range(5):
+            s.record_fail()
+        assert s.silenced
+        assert s.fails == 5
+        s.record_success()
+        assert s.silenced  # still silenced
+        assert s.fails == 5  # fails NOT reset after 1 OK
+        assert s.successes == 1
+
+    def test_silenced_three_oks_reset_everything(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        for _ in range(5):
+            s.record_fail()
+        assert s.silenced
+        s.record_success()
+        assert s.silenced  # still silenced after 1
+        s.record_success()
+        assert s.silenced  # still silenced after 2
+        s.record_success()
+        assert not s.silenced  # unsilenced after 3
+        assert s.fails == 0
+        assert s.successes == 0

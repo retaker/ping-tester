@@ -103,12 +103,15 @@ class AlertState:
         return None
 
     def record_success(self):
-        self.fails = 0
         self.successes += 1
-
-        if self.silenced and self.successes >= 3:
-            self.silenced = False
-            self.successes = 0
+        if self.silenced:
+            if self.successes >= 3:
+                self.fails = 0
+                self.successes = 0
+                self.silenced = False
+            # fails NOT reset until 3 successes
+        else:
+            self.fails = 0
 
     @property
     def in_fail_group(self):
