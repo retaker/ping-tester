@@ -3,7 +3,7 @@
 Dual IPv4/IPv6 ping monitor with logging and alerting.
 
 Usage:
-    python ping_tester.py <domain1> <domain2> [--volume 0-100] [--wav alert.wav]
+    python ping_tester.py <domain1> <domain2> [--volume 0-100]
 
 Example:
     python ping_tester.py google.com ipv6.google.com --volume 80
