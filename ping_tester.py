@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Dual IPv4/IPv6 ping monitor with logging and alerting.
+Multi-host ping monitor with IPv4/IPv6 auto-detection, latency tracking and alerting.
 
 Usage:
-    python ping_tester.py <domain1> <domain2> [--volume 0-100]
+    python ping_tester.py HOST [HOST ...] [--latency-ms 200] [--volume 100] [--interval 1]
 
 Example:
-    python ping_tester.py google.com ipv6.google.com --volume 80
+    python ping_tester.py baidu.com google.com --latency-ms 150 --volume 80
 """
 
 import argparse
@@ -127,8 +127,8 @@ class AlertState:
 # Ping
 # ---------------------------------------------------------------------------
 
-def resolve_ip(domain, use_ipv6):
-    """Resolve *domain* to an IP address. Returns the IP string, or domain on failure."""
+def resolve_ip(domain, use_ipv6=False):
+    """Resolve *domain* to an IP address. Returns the IP string, or None on failure."""
     family = socket.AF_INET6 if use_ipv6 else socket.AF_INET
     try:
         for res in socket.getaddrinfo(domain, None, family=family, type=socket.SOCK_DGRAM):
@@ -139,47 +139,65 @@ def resolve_ip(domain, use_ipv6):
                 return addr[:idx] if idx != -1 else addr
             return addr
     except socket.gaierror:
-        return domain
+        return None
 
 
-def ping_host(domain, use_ipv6):
-    """Ping *domain*.  Returns (success: bool, detail: str, ip: str)."""
-    ip = resolve_ip(domain, use_ipv6)
-    if sys.platform == 'win32':
-        flag = '-6' if use_ipv6 else '-4'
-        cmd = ['ping', flag, '-n', '1', domain]
-    else:
-        cmd = ['ping6', '-c', '1', domain] if use_ipv6 else ['ping', '-c', '1', domain]
+def ping_host(domain):
+    """Ping domain with auto IPv4/IPv6 detection.
+    Returns (success: bool, detail: str, ip: str)."""
+    last_detail = 'Ping failed'
+    last_ip = domain
+    for use_ipv6 in (False, True):
+        ip = resolve_ip(domain, use_ipv6)
+        if ip is None:
+            continue
+        last_ip = ip
 
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        output = r.stdout + r.stderr
-    except subprocess.TimeoutExpired:
-        return False, 'Ping timeout', ip
-    except Exception as e:
-        return False, str(e), ip
+        if sys.platform == 'win32':
+            flag = '-6' if use_ipv6 else '-4'
+            cmd = ['ping', flag, '-n', '1', domain]
+        else:
+            cmd = (['ping6', '-c', '1', domain] if use_ipv6
+                   else ['ping', '-c', '1', domain])
 
-    # Exit-code based success / failure (language-independent)
-    if r.returncode == 0:
-        m = re.search(r'(?:time|时间|時間)[=<]\s*(\d+\.?\d*)\s*ms', output)
-        return True, f'{m.group(1)}ms' if m else 'OK', ip
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            output = r.stdout + r.stderr
+        except subprocess.TimeoutExpired:
+            last_detail = 'Ping timeout'
+            continue
+        except Exception as e:
+            last_detail = str(e)
+            continue
 
-    # --- failure classification (English + Chinese) ---
-    lower = output.lower()
-    if 'could not find host' in lower or 'unknown host' in lower or 'name or service not known' in lower \
-       or '找不到主机' in output or '找不到' in output or '找不到主機' in output:
-        return False, 'DNS resolution failed', ip
-    if 'timed out' in lower or '请求超时' in output or '要求等候逾時' in output:
-        return False, 'Request timed out', ip
-    if 'unreachable' in lower or '无法访问' in output or '無法連線' in output:
-        return False, 'Destination unreachable', ip
-    if 'ttl expired' in lower:
-        return False, 'TTL expired', ip
-    if '100% packet loss' in lower or '100% 丢失' in output or '100% 遗失' in output:
-        return False, '100% packet loss', ip
-    if 'general failure' in lower or '一般故障' in output or '一般失敗' in output:
-        return False, 'General failure', ip
-    return False, 'No response', ip
+        if r.returncode == 0:
+            m = re.search(r'(?:time|时间|時間)[=<]\s*(\d+\.?\d*)\s*ms', output)
+            return True, f'{m.group(1)}ms' if m else 'OK', ip
+
+        # --- failure classification (English + Chinese) ---
+        lower = output.lower()
+        if 'could not find host' in lower or 'unknown host' in lower or \
+           'name or service not known' in lower \
+           or '找不到主机' in output or '找不到' in output or '找不到主機' in output:
+            return False, 'DNS resolution failed', ip
+        if 'ttl expired' in lower:
+            return False, 'TTL expired', ip
+        if 'general failure' in lower or '一般故障' in output or '一般失敗' in output:
+            return False, 'General failure', ip
+        # Transient failures — try next address family
+        if 'timed out' in lower or '请求超时' in output or '要求等候逾時' in output:
+            last_detail = 'Request timed out'
+            continue
+        if 'unreachable' in lower or '无法访问' in output or '無法連線' in output:
+            last_detail = 'Destination unreachable'
+            continue
+        if '100% packet loss' in lower or '100% 丢失' in output or '100% 遗失' in output:
+            last_detail = '100% packet loss'
+            continue
+        last_detail = 'No response'
+        continue
+
+    return False, last_detail, last_ip
 
 
 # ---------------------------------------------------------------------------
@@ -212,121 +230,151 @@ class Logger:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description='Dual IPv4/IPv6 ping monitor')
-    parser.add_argument('domain1', help='Domain for IPv4 ping')
-    parser.add_argument('domain2', help='Domain for IPv6 ping')
-    parser.add_argument('--volume', type=int, default=100, help='Beep volume 0-100 (default: 100)')
+    parser = argparse.ArgumentParser(
+        description='Multi-host ping monitor with IPv4/IPv6 auto-detection')
+    parser.add_argument('hosts', nargs='+', help='Hostnames or IPs to ping')
+    parser.add_argument('--latency-ms', type=int, default=200,
+                        help='Latency threshold in ms (default: 200)')
+    parser.add_argument('--volume', type=int, default=100,
+                        help='Beep volume 0-100 (default: 100)')
+    parser.add_argument('--interval', type=float, default=1.0,
+                        help='Seconds between ping rounds (default: 1)')
     args = parser.parse_args()
 
     vol = max(0, min(100, args.volume))
+    threshold = max(1, args.latency_ms)
+    interval = max(0.1, args.interval)
 
-    # ---- Logger ----
+    # Logger
     ts = datetime.now().strftime('%Y%m%d-%H%M%S')
     logger = Logger(ts)
 
     print(f'Ping Tester  |  {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    print(f'  IPv4 : {args.domain1}')
-    print(f'  IPv6 : {args.domain2}')
-    print(f'  Vol  : {vol}%')
-    print(f'  Full : {logger.full}')
-    print(f'  Fail : {logger.fail}')
+    print(f'  Hosts  : {", ".join(args.hosts)}')
+    print(f'  Latency threshold: {threshold}ms')
+    print(f'  Interval: {interval}s')
+    print(f'  Vol     : {vol}%')
+    print(f'  Full log: {logger.full}')
+    print(f'  Fail log: {logger.fail}')
     print()
-    print(f'{"Time":<22} {"Type":<6} {"Target (IP)":<42} {"Result":<28} Loss')
-    print('-' * 100)
+    header = (f'{"Time":<22} {"Host":<14} {"Target (IP)":<42} '
+              f'{"Result":<20} Loss')
+    print(header)
+    print('-' * len(header))
 
-    # ---- Shared state ----
+    # Shared state
     running = True
     print_lock = threading.Lock()
-
-    alert = {'IPv4': AlertState(), 'IPv6': AlertState()}
-
-    # per-domain fail-log buffer
-    fail_buf = {'IPv4': [], 'IPv6': []}
+    alerts = {}
+    fail_buf = {}
     buf_lock = threading.Lock()
-
-    # per-domain packet counters
-    sent = {'IPv4': 0, 'IPv6': 0}
-    lost = {'IPv4': 0, 'IPv6': 0}
+    sent = {}
+    lost = {}
     counter_lock = threading.Lock()
 
-    # ---- Result handler ----
-    def handle(label, domain, ip, success, detail):
+    for host in args.hosts:
+        label = host_label(host)
+        alerts[host] = AlertState()
+        fail_buf[host] = []
+        sent[host] = 0
+        lost[host] = 0
+
+    def handle(host, ip, success, detail, latency_ms):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        ts_str = f'[{now}]'
+        label = host_label(host)
+
+        classification = classify_result(success, latency_ms, threshold)
 
         with counter_lock:
-            sent[label] += 1
-            if not success:
-                lost[label] += 1
-            total = sent[label]
-            failed = lost[label]
+            sent[host] += 1
+            if classification != 'OK':
+                lost[host] += 1
+            total = sent[host]
+            failed = lost[host]
             pct = f'{failed / total * 100:.1f}%' if total > 0 else '0%'
 
-        if success:
+        if classification == 'OK':
             result_str = f'OK ({detail})'
+        elif classification == 'SLOW':
+            result_str = f'SLOW ({detail})'
         else:
             result_str = f'FAIL ({detail})'
 
-        target = f'{domain} ({ip})'
-        loss_str = f'loss rate: {pct}'
+        target = f'{host} ({ip})'
+        loss_str = f'loss: {failed}/{total} ({pct})'
 
-        # console
+        # Console
         with print_lock:
-            print(f'{ts_str:<22} [{label}] {target:<42} {result_str:<28} {loss_str}')
+            print(f'{now:<22} [{label:<12}] {target:<42} '
+                  f'{result_str:<20} {loss_str}')
 
-        # full log
-        logger.full_log(f'{ts_str} [{label}] {target} - {result_str} - {loss_str}')
+        # Full log
+        logger.full_log(
+            f'[{now}] [{label}] {target} - {result_str} - {loss_str}')
 
-        st = alert[label]
-        entry = f'{ts_str} [{label}] {target} - FAIL'
+        st = alerts[host]
+        entry = (f'[{now}] [{label}] {target} - '
+                 f'{classification} ({detail})')
 
-        if success:
+        if classification == 'OK':
             was_group = st.fails >= 2
             st.record_success()
             if not was_group:
                 with buf_lock:
-                    fail_buf[label].clear()  # discard isolated fail(s)
+                    fail_buf[host].clear()
         else:
             action = st.record_fail()
 
             with buf_lock:
-                fail_buf[label].append(entry)
-                if st.fails >= 2:  # 2+ consecutive fails → flush buffer
-                    for e in fail_buf[label]:
+                fail_buf[host].append(entry)
+                if st.fails >= 2:
+                    for e in fail_buf[host]:
                         logger.fail_log(e)
-                    fail_buf[label].clear()
+                    logger.fail_sep()
+                    fail_buf[host].clear()
 
-            # alert
             if action == 'beep_1':
-                threading.Thread(target=play_alert_first, args=(vol,), daemon=True).start()
+                threading.Thread(target=play_alert_first,
+                                 args=(vol,), daemon=True).start()
             elif action == 'beep_3':
-                threading.Thread(target=play_alert_repeat, args=(vol,), daemon=True).start()
+                threading.Thread(target=play_alert_repeat,
+                                 args=(vol,), daemon=True).start()
 
-    # ---- Workers ----
-    def worker(label, domain, ipv6, offset):
+    def worker(host, offset):
         if offset:
             time.sleep(offset)
         while running:
-            ok, detail, ip = ping_host(domain, ipv6)
-            handle(label, domain, ip, ok, detail)
+            ok, detail, ip = ping_host(host)
+            latency_ms = 0
+            if ok:
+                m = re.match(r'(\d+\.?\d*)', detail)
+                if m:
+                    latency_ms = float(m.group(1))
+                else:
+                    latency_ms = 0
+            handle(host, ip, ok, detail, latency_ms)
             if running:
-                time.sleep(2)
+                time.sleep(interval)
 
-    t1 = threading.Thread(target=worker, args=('IPv4', args.domain1, False, 0), daemon=True)
-    t2 = threading.Thread(target=worker, args=('IPv6', args.domain2, True, 1), daemon=True)
-
-    t1.start()
-    t2.start()
+    # Start threads, staggered to spread load
+    threads = []
+    for i, host in enumerate(args.hosts):
+        t = threading.Thread(
+            target=worker,
+            args=(host, i * (interval / len(args.hosts))),
+            daemon=True)
+        t.start()
+        threads.append(t)
 
     try:
-        while t1.is_alive() or t2.is_alive():
-            t1.join(0.5)
-            t2.join(0.5)
+        while any(t.is_alive() for t in threads):
+            for t in threads:
+                t.join(0.3)
     except KeyboardInterrupt:
-        print('\nShutting down …')
+        print('\nShutting down ...')
         running = False
-        t1.join(timeout=2)
-        t2.join(timeout=2)
+        for t in threads:
+            t.join(timeout=3)
         print('Stopped.')
 
 
