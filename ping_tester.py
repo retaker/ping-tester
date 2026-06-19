@@ -10,16 +10,12 @@ Example:
 """
 
 import argparse
-import io
-import os
 import re
 import socket
-import struct
 import subprocess
 import sys
 import threading
 import time
-import wave
 from datetime import datetime
 from pathlib import Path
 
@@ -59,58 +55,25 @@ def classify_result(success, latency_ms, threshold):
 # Audio alert
 # ---------------------------------------------------------------------------
 
-def _alert_sound():
-    """Play system exclamation sound — reliable across all thread types."""
-    if sys.platform == 'win32':
-        import winsound
-        winsound.PlaySound('SystemExclamation', winsound.SND_ALIAS)
+def play_alert_first(volume=100):
+    """1000Hz sine wave, 600ms duration, 300ms warmup before tone."""
+    from soundgen import Sound
+    Sound(frequency=1000, duration=600, warmup=300, volume=volume,
+          waveform='sine').play()
 
 
-def _play_wav(wav_bytes):
-    """Play WAV via temp file + SND_FILENAME."""
-    if sys.platform == 'win32':
-        import winsound, tempfile
-        fd, tmp = tempfile.mkstemp(suffix='.wav')
-        try:
-            with os.fdopen(fd, 'wb') as f:
-                f.write(wav_bytes)
-            winsound.PlaySound(tmp, winsound.SND_FILENAME)
-        finally:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-
-
-def _load_wav(path):
-    with open(path, 'rb') as f:
-        return f.read()
-
-
-def _adjust_volume(wav_bytes, volume_pct):
-    """Scale PCM amplitude of a WAV file. volume_pct: 0-100."""
-    if volume_pct >= 100:
-        return wav_bytes
-    factor = volume_pct / 100.0
-    buf = io.BytesIO(wav_bytes)
-    with wave.open(buf, 'rb') as wf:
-        params = wf.getparams()
-        raw = wf.readframes(params.nframes)
-    nchannels, sampwidth, nframes = params.nchannels, params.sampwidth, params.nframes
-    total_samples = nframes * nchannels
-    if sampwidth == 2:
-        fmt = f'<{total_samples}h'
-        samples = [int(s * factor) for s in struct.unpack(fmt, raw)]
-        adjusted = struct.pack(fmt, *samples)
-    elif sampwidth == 1:
-        adjusted = bytes(int(128 + (b - 128) * factor) for b in raw)
-    else:
-        adjusted = raw
-    out = io.BytesIO()
-    with wave.open(out, 'wb') as wf:
-        wf.setparams(params)
-        wf.writeframes(adjusted)
-    return out.getvalue()
+def play_alert_repeat(volume=100):
+    """3 short beeps: each 300ms, 150ms gap, 300ms warmup before first only."""
+    import time
+    from soundgen import Sound
+    Sound(frequency=1000, duration=300, warmup=300, volume=volume,
+          waveform='sine').play()
+    time.sleep(0.15)
+    Sound(frequency=1000, duration=300, volume=volume,
+          waveform='sine').play()
+    time.sleep(0.15)
+    Sound(frequency=1000, duration=300, volume=volume,
+          waveform='sine').play()
 
 
 # ---------------------------------------------------------------------------
@@ -253,18 +216,9 @@ def main():
     parser.add_argument('domain1', help='Domain for IPv4 ping')
     parser.add_argument('domain2', help='Domain for IPv6 ping')
     parser.add_argument('--volume', type=int, default=100, help='Beep volume 0-100 (default: 100)')
-    parser.add_argument('--wav', help='Path to custom WAV alert file')
     args = parser.parse_args()
 
     vol = max(0, min(100, args.volume))
-
-    # ---- Audio ----
-    use_wav = bool(args.wav)
-    if use_wav:
-        wav_bytes = _adjust_volume(_load_wav(args.wav), vol)
-        wav_short = wav_bytes
-    else:
-        vol = None  # system-beep volume is controlled by the OS mixer
 
     # ---- Logger ----
     ts = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -273,10 +227,7 @@ def main():
     print(f'Ping Tester  |  {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     print(f'  IPv4 : {args.domain1}')
     print(f'  IPv6 : {args.domain2}')
-    if vol is not None:
-        print(f'  Vol  : {vol}%')
-    else:
-        print(f'  Vol  : system')
+    print(f'  Vol  : {vol}%')
     print(f'  Full : {logger.full}')
     print(f'  Fail : {logger.fail}')
     print()
@@ -347,19 +298,9 @@ def main():
 
             # alert
             if action == 'beep_1':
-                if use_wav:
-                    threading.Thread(target=_play_wav, args=(wav_bytes,), daemon=True).start()
-                else:
-                    threading.Thread(target=_alert_sound, daemon=True).start()
+                threading.Thread(target=play_alert_first, args=(vol,), daemon=True).start()
             elif action == 'beep_3':
-                def _three():
-                    for _ in range(3):
-                        if use_wav:
-                            _play_wav(wav_short)
-                        else:
-                            _alert_sound()
-                        time.sleep(0.21)
-                threading.Thread(target=_three, daemon=True).start()
+                threading.Thread(target=play_alert_repeat, args=(vol,), daemon=True).start()
 
     # ---- Workers ----
     def worker(label, domain, ipv6, offset):

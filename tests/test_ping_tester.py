@@ -36,3 +36,64 @@ class TestClassifyResult:
     def test_fail_ignores_latency(self):
         # FAIL always takes priority over latency check
         assert classify_result(False, 999.0, 200) == 'FAIL'
+
+
+class TestAlertState:
+    def test_initial_normal(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        assert not s.in_fail_group
+        assert s.fails == 0
+
+    def test_isolated_fail_no_alert(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        result = s.record_fail()
+        assert result is None  # fail=1, no alert
+        s.record_success()     # succeeds right after
+        assert s.fails == 0
+
+    def test_two_fails_triggers_beep_1(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        s.record_fail()
+        result = s.record_fail()
+        assert result == 'beep_1'
+
+    def test_five_fails_triggers_beep_3_and_silences(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        for _ in range(4):
+            s.record_fail()
+        result = s.record_fail()  # 5th fail
+        assert result == 'beep_3'
+        assert s.silenced is True
+
+    def test_silenced_stays_silent(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        for _ in range(5):
+            s.record_fail()
+        assert s.silenced
+        result = s.record_fail()  # 6th fail
+        assert result is None
+
+    def test_recovery_resets_silenced(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        for _ in range(5):
+            s.record_fail()
+        assert s.silenced
+        for _ in range(3):
+            s.record_success()
+        assert not s.silenced
+        assert s.fails == 0
+
+    def test_fail_then_success_before_threshold(self):
+        from ping_tester import AlertState
+        s = AlertState()
+        s.record_fail()  # fail=1
+        s.record_success()  # resets
+        assert s.fails == 0
+        # next single fail should still be isolated
+        assert s.record_fail() is None
