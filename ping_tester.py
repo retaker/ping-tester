@@ -27,6 +27,35 @@ LOGS_DIR = "logs"
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def host_label(host):
+    """Derive a short display label from a hostname."""
+    # For IP addresses, return as-is (truncate long IPv6 for display)
+    if ':' in host:
+        parts = host.split(':')
+        label = ':'.join(p for p in parts[:2] if p)
+        return label or host
+    if host.replace('.', '').isdigit():
+        return host
+    # For domain names, take the first meaningful segment
+    parts = host.split('.')
+    if len(parts) >= 2:
+        return parts[-2]
+    return host
+
+
+def classify_result(success, latency_ms, threshold):
+    """Classify ping result as 'OK', 'SLOW', or 'FAIL'."""
+    if not success:
+        return 'FAIL'
+    if latency_ms > threshold:
+        return 'SLOW'
+    return 'OK'
+
+
+# ---------------------------------------------------------------------------
 # Audio alert
 # ---------------------------------------------------------------------------
 
