@@ -79,7 +79,10 @@ class Sound:
             import winsound
             winsound.PlaySound(path, winsound.SND_FILENAME)
         elif sys.platform == 'darwin':
-            subprocess.run(['afplay', path], capture_output=True)
+            try:
+                subprocess.run(['afplay', path], capture_output=True)
+            except FileNotFoundError:
+                pass
         else:
             try:
                 subprocess.run(['aplay', path], capture_output=True)
