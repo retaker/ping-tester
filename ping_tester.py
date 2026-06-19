@@ -124,7 +124,7 @@ def resolve_ip(domain, use_ipv6=False):
     family = socket.AF_INET6 if use_ipv6 else socket.AF_INET
     try:
         for res in socket.getaddrinfo(domain, None, family=family, type=socket.SOCK_DGRAM):
-            addr = res[4][0]
+            addr = str(res[4][0])
             if use_ipv6:
                 # omit scope-id for display
                 idx = addr.find('%')
