@@ -141,14 +141,16 @@ def resolve_ip(domain, use_ipv6=False):
 
 def ping_host(domain):
     """Ping domain with auto IPv4/IPv6 detection.
-    Returns (success: bool, detail: str, ip: str)."""
+    Returns (success: bool, detail: str, ip: str, family: str)."""
     last_detail = 'Ping failed'
     last_ip = domain
+    last_family = 'IPv4'
     for use_ipv6 in (False, True):
         ip = resolve_ip(domain, use_ipv6)
         if ip is None:
             continue
         last_ip = ip
+        last_family = 'IPv6' if use_ipv6 else 'IPv4'
 
         if sys.platform == 'win32':
             flag = '-6' if use_ipv6 else '-4'
@@ -169,18 +171,19 @@ def ping_host(domain):
 
         if r.returncode == 0:
             m = re.search(r'(?:time|时间|時間)[=<]\s*(\d+\.?\d*)\s*ms', output)
-            return True, f'{m.group(1)}ms' if m else 'OK', ip
+            family = 'IPv6' if use_ipv6 else 'IPv4'
+            return True, f'{m.group(1)}ms' if m else 'OK', ip, family
 
         # --- failure classification (English + Chinese) ---
         lower = output.lower()
         if 'could not find host' in lower or 'unknown host' in lower or \
            'name or service not known' in lower \
            or '找不到主机' in output or '找不到' in output or '找不到主機' in output:
-            return False, 'DNS resolution failed', ip
+            return False, 'DNS resolution failed', ip, 'IPv6' if use_ipv6 else 'IPv4'
         if 'ttl expired' in lower:
-            return False, 'TTL expired', ip
+            return False, 'TTL expired', ip, 'IPv6' if use_ipv6 else 'IPv4'
         if 'general failure' in lower or '一般故障' in output or '一般失敗' in output:
-            return False, 'General failure', ip
+            return False, 'General failure', ip, 'IPv6' if use_ipv6 else 'IPv4'
         # Transient failures — try next address family
         if 'timed out' in lower or '请求超时' in output or '要求等候逾時' in output:
             last_detail = 'Request timed out'
@@ -194,7 +197,7 @@ def ping_host(domain):
         last_detail = 'No response'
         continue
 
-    return False, last_detail, last_ip
+    return False, last_detail, last_ip, last_family
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +220,6 @@ class Logger:
         with self._lock:
             with open(self.fail, 'a', encoding='utf-8') as f:
                 f.write(msg + '\n')
-
-    def fail_sep(self):
-        self.fail_log('-------------------')
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ def main():
     print(f'  Full log: {logger.full}')
     print(f'  Fail log: {logger.fail}')
     print()
-    header = (f'{"Time":<22} {"Host":<14} {"Target (IP)":<42} '
+    header = (f'{"Time":<22} {"Host":<20} {"Target (IP)":<42} '
               f'{"Result":<20} Loss')
     print(header)
     print('-' * len(header))
@@ -275,7 +275,7 @@ def main():
         sent[host] = 0
         lost[host] = 0
 
-    def handle(host, ip, success, detail, latency_ms):
+    def handle(host, ip, success, detail, latency_ms, family):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         label = host_label(host)
 
@@ -301,15 +301,15 @@ def main():
 
         # Console
         with print_lock:
-            print(f'{now:<22} [{label:<12}] {target:<42} '
+            print(f'{now:<22} [{family}] [{label:<12}] {target:<42} '
                   f'{result_str:<20} {loss_str}')
 
         # Full log
         logger.full_log(
-            f'[{now}] [{label}] {target} - {result_str} - {loss_str}')
+            f'[{now}] [{family}] [{label}] {target} - {result_str} - {loss_str}')
 
         st = alerts[host]
-        entry = (f'[{now}] [{label}] {target} - '
+        entry = (f'[{now}] [{family}] [{label}] {target} - '
                  f'{classification} ({detail})')
 
         if classification == 'OK':
@@ -326,7 +326,6 @@ def main():
                 if st.fails == 2:
                     for e in fail_buf[host]:
                         logger.fail_log(e)
-                    logger.fail_sep()
                     fail_buf[host].clear()
                 elif st.fails > 2:
                     logger.fail_log(entry)
@@ -343,7 +342,7 @@ def main():
         if offset:
             time.sleep(offset)
         while running:
-            ok, detail, ip = ping_host(host)
+            ok, detail, ip, family = ping_host(host)
             latency_ms = 0
             if ok:
                 m = re.match(r'(\d+\.?\d*)', detail)
@@ -351,7 +350,7 @@ def main():
                     latency_ms = float(m.group(1))
                 else:
                     latency_ms = 0
-            handle(host, ip, ok, detail, latency_ms)
+            handle(host, ip, ok, detail, latency_ms, family)
             if running:
                 time.sleep(interval)
 
