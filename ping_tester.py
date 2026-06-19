@@ -82,26 +82,23 @@ class AlertState:
     State transitions:
 
       normal ──fail=2──→ beep×1 ──fail=5──→ beep×3 → silenced
-        ↑                                                  │
-        └──── success=3 ──────────────────────────────────┘
+        ↑                    ↑                     │
+        └──── success=3 ←────┴──── success=3 ←─────┘
 
-    - normal: OK resets fail counter immediately. A single isolated
-      failure is harmless — one OK wipes it. Two consecutive failures
-      trigger a 'beep_1' (first alert).
-    - beep_1: after 2 fails, we have entered a failure episode. If
-      failures continue, we progress toward beep_3. If an OK occurs
-      before reaching fail=5, the counter resets to normal.
-    - beep_3 + silenced: after 5 consecutive fails, the user has
-      heard enough — we fire the final triple-beep, then go silent.
-      Silenced state ignores further failures (no more beeps).
-    - recovery: while silenced, a single OK does NOT reset the counter.
-      The host must prove it is truly recovered by delivering 3
-      consecutive successes. Only then do we reset fails, clear
-      successes, and lift the silenced flag.
+    Recovery always requires 3 consecutive successes, regardless of
+    whether the host is in beep_1, beep_3, or silenced state. This
+    prevents brief network blips from restarting the alert cycle.
 
-    NOTE: isolated single failures (fail=1 followed by OK) are
-    discarded from the FAIL log by the handle() caller — they never
-    cause a beep or a log entry in the fail file.
+    - fail=1: no alert. If 3 OKs follow, counter resets silently.
+    - fail=2: triggers beep_1 (first warning). Needs 3 OKs to reset.
+    - fail=3,4: no additional alert, continuing toward beep_3.
+    - fail=5: triggers beep_3 (final alert), enters silenced state.
+      Silenced state suppresses all further beeps.
+    - success=3: resets fail counter, clears silenced flag, resets
+      success counter. Back to normal.
+
+    NOTE: isolated single failures (fail=1 followed by 3 OKs) are
+    discarded from the FAIL log by the handle() caller.
     """
 
     def __init__(self):
@@ -132,23 +129,15 @@ class AlertState:
     def record_success(self):
         """Call when a ping succeeds within latency threshold.
 
-        Non-silenced: immediately resets the fail counter (one OK is
-        enough to stop a developing failure episode).
-
-        Silenced: requires 3 consecutive successes to unsilence and
-        reset. A single OK while silenced does NOT reset fails — this
-        prevents brief "flapping" recoveries from restarting the full
-        alert cycle.
+        Requires 3 consecutive successes to reset the fail counter
+        and clear the silenced flag. This prevents brief recoveries
+        from instantly restarting the full alert cycle.
         """
         self.successes += 1
-        if self.silenced:
-            if self.successes >= 3:
-                self.fails = 0
-                self.successes = 0
-                self.silenced = False  # fully recovered
-            # NOTE: fails is deliberately NOT reset after only 1-2 OKs
-        else:
-            self.fails = 0             # normal state: 1 OK resets
+        if self.successes >= 3:
+            self.fails = 0
+            self.successes = 0
+            self.silenced = False
 
     @property
     def in_fail_group(self):

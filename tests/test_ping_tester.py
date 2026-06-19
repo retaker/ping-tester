@@ -50,8 +50,11 @@ class TestAlertState:
         s = AlertState()
         result = s.record_fail()
         assert result is None  # fail=1, no alert
-        s.record_success()     # succeeds right after
+        # Need 3 OKs to reset fails
+        for _ in range(3):
+            s.record_success()
         assert s.fails == 0
+        assert s.successes == 0
 
     def test_two_fails_triggers_beep_1(self):
         from ping_tester import AlertState
@@ -59,6 +62,14 @@ class TestAlertState:
         s.record_fail()
         result = s.record_fail()
         assert result == 'beep_1'
+        # fails stays at 2, not reset by 1-2 OKs
+        s.record_success()
+        assert s.fails == 2  # not reset yet
+        s.record_success()
+        assert s.fails == 2  # still not reset
+        s.record_success()
+        assert s.fails == 0  # reset after 3rd OK
+        assert s.successes == 0
 
     def test_five_fails_triggers_beep_3_and_silences(self):
         from ping_tester import AlertState
@@ -93,10 +104,11 @@ class TestAlertState:
         from ping_tester import AlertState
         s = AlertState()
         s.record_fail()  # fail=1
-        s.record_success()  # resets
-        assert s.fails == 0
-        # next single fail should still be isolated
-        assert s.record_fail() is None
+        # 1 OK does not reset — need 3
+        s.record_success()
+        assert s.fails == 1  # not reset
+        # fail again before 3 OKs — continues counting
+        assert s.record_fail() == 'beep_1'  # fail=2, triggers alert
 
     def test_silenced_one_ok_does_not_reset_fails(self):
         from ping_tester import AlertState

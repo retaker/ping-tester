@@ -85,9 +85,9 @@ Time                   Host                 Target (IP)                      Res
 | 首次告警 | 连续 2 次失败 | 750Hz / 300ms / 半音量，单声 |
 | 最终告警 | 连续 5 次失败 | 1000Hz / 300ms × 3（无间隔），随后进入静默 |
 | 静默 | 已触发最终告警 | 后续失败不再发声，避免反复干扰 |
-| 恢复 | 静默状态下连续 3 次成功 | 清零计数器，解除静默，恢复正常监控 |
+| 恢复 | 连续 3 次成功 | 清零计数器，解除静默，恢复正常 |
 
-> **关键设计：** 静默状态下，1-2 次成功不会重置计数器。只有连续 3 次成功才视为真正恢复，防止网络短暂波动导致告警反复触发。正常状态下（未静默），1 次成功即可清零失败计数。
+> **关键设计：** 无论在哪个阶段（首次告警后、最终告警后、静默中），都需要连续 3 次成功才清零失败计数。这防止了网络短暂波动导致告警反复触发。
 
 ## 许可
 
@@ -182,9 +182,9 @@ normal ──fail=2──→ single beep ──fail=5──→ triple beep → s
 | First alert | 2 consecutive fails | 750Hz / 300ms / half volume, single beep |
 | Final alert | 5 consecutive fails | 1000Hz / 300ms × 3 (no gap), then enters silenced |
 | Silenced | After final alert | Further failures are silent, no more beeps |
-| Recovery | 3 consecutive successes while silenced | Resets counters, lifts silence, returns to normal |
+| Recovery | 3 consecutive successes | Resets counters, lifts silence, returns to normal |
 
-> **Key design:** While silenced, 1-2 successes do NOT reset the fail counter. Only 3 consecutive successes are treated as genuine recovery, preventing brief network blips from restarting the full alert cycle. In normal (non-silenced) state, a single success resets the counter.
+> **Key design:** Recovery always requires 3 consecutive successes — whether after the first alert, final alert, or in silenced state. This prevents brief network blips from restarting the alert cycle.
 
 ## License
 
