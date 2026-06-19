@@ -295,7 +295,7 @@ def main():
     print(f'  Fail log: {logger.fail}')
     print()
     header = (f'{"Time":<22} {"Host":<20} {"Target (IP)":<42} '
-              f'{"Result":<20} Loss')
+              f'{"Result":<28} Loss')
     print(header)
     print('-' * len(header))
 
@@ -342,7 +342,7 @@ def main():
         # Console
         with print_lock:
             print(f'{now:<22} [{family}] [{label}] {target:<42} '
-                  f'{result_str:<20} {loss_str}')
+                  f'{result_str:<28} {loss_str}')
 
         # Full log
         logger.full_log(
