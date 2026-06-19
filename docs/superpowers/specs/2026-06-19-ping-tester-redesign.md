@@ -11,11 +11,12 @@
 - 延迟阈值：默认 200ms，超过阈值视为 SLOW
 - 告警方式：仅使用 soundgen 模块生成 1000Hz sine wave，移除 WAV 文件支持
 - 音量默认值：100
+- Ping 间隔默认值：1s
 
 ## CLI
 
 ```
-python ping_tester.py HOST [HOST ...] [--latency-ms 200] [--volume 100]
+python ping_tester.py HOST [HOST ...] [--latency-ms 200] [--volume 100] [--interval 1]
 ```
 
 | 参数 | 说明 |
@@ -23,13 +24,14 @@ python ping_tester.py HOST [HOST ...] [--latency-ms 200] [--volume 100]
 | `HOST` | 一个或多个域名或 IP 地址，IPv4/IPv6 由系统自动选择 |
 | `--latency-ms` | 高延迟判定阈值（毫秒），默认 200 |
 | `--volume` | 提示音音量 0-100，默认 100 |
+| `--interval` | 每轮 ping 间隔秒数，默认 1 |
 
 ## 架构
 
 ```
 ping_tester.py
 ├── CLI (argparse)
-├── Ping 工作线程 — 每个 host 一个线程，间隔 2s
+├── Ping 工作线程 — 每个 host 一个线程，间隔由 --interval 指定
 │   ├── resolve_ip() — DNS 解析
 │   ├── ping_host() — subprocess 调用系统 ping
 │   ├── 结果分类 — OK / FAIL / SLOW
