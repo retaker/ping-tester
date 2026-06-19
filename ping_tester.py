@@ -339,16 +339,36 @@ def main():
         target = f'{host} ({ip})'
         loss_str = f'loss: {failed}/{total} ({pct})'
 
+        st = alerts[host]
+
+        # Predict alert action for this line (before state change)
+        pending_action = None
+        if classification != 'OK' and not st.silenced:
+            if st.fails == 1:   # about to trigger beep_1
+                pending_action = 'beep_1'
+            elif st.fails == 4:  # about to trigger beep_3
+                pending_action = 'beep_3'
+
+        COLOR_RESET = '\033[0m'
+        COLOR_BEEP1 = '\033[38;5;178m'   # dark gold — readable on light & dark
+        COLOR_BEEP3 = '\033[38;5;203m'   # salmon red — readable on light & dark
+
         # Console
         with print_lock:
-            print(f'{now:<22} [{family}] [{label}] {target:<42} '
-                  f'{result_str:<28} {loss_str}')
+            if pending_action == 'beep_1':
+                print(f'{COLOR_BEEP1}{now:<22} [{family}] [{label}] {target:<42} '
+                      f'{result_str:<28} {loss_str}{COLOR_RESET}')
+            elif pending_action == 'beep_3':
+                print(f'{COLOR_BEEP3}{now:<22} [{family}] [{label}] {target:<42} '
+                      f'{result_str:<28} {loss_str}{COLOR_RESET}')
+            else:
+                print(f'{now:<22} [{family}] [{label}] {target:<42} '
+                      f'{result_str:<28} {loss_str}')
 
         # Full log
         logger.full_log(
             f'[{now}] [{family}] [{label}] {target} - {result_str} - {loss_str}')
 
-        st = alerts[host]
         entry = (f'[{now}] [{family}] [{label}] {target} - '
                  f'{classification} ({detail})')
 
