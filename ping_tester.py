@@ -77,41 +77,78 @@ def play_alert_repeat(volume=100):
 
 class AlertState:
     """
-    State machine for one domain's alert behaviour:
+    Per-host alert state machine.
+
+    State transitions:
 
       normal ──fail=2──→ beep×1 ──fail=5──→ beep×3 → silenced
         ↑                                                  │
         └──── success=3 ──────────────────────────────────┘
+
+    - normal: OK resets fail counter immediately. A single isolated
+      failure is harmless — one OK wipes it. Two consecutive failures
+      trigger a 'beep_1' (first alert).
+    - beep_1: after 2 fails, we have entered a failure episode. If
+      failures continue, we progress toward beep_3. If an OK occurs
+      before reaching fail=5, the counter resets to normal.
+    - beep_3 + silenced: after 5 consecutive fails, the user has
+      heard enough — we fire the final triple-beep, then go silent.
+      Silenced state ignores further failures (no more beeps).
+    - recovery: while silenced, a single OK does NOT reset the counter.
+      The host must prove it is truly recovered by delivering 3
+      consecutive successes. Only then do we reset fails, clear
+      successes, and lift the silenced flag.
+
+    NOTE: isolated single failures (fail=1 followed by OK) are
+    discarded from the FAIL log by the handle() caller — they never
+    cause a beep or a log entry in the fail file.
     """
 
     def __init__(self):
-        self.fails = 0
-        self.successes = 0
-        self.silenced = False
+        self.fails = 0          # consecutive failure count
+        self.successes = 0      # consecutive success count (for unsilence)
+        self.silenced = False   # alert suppressed after 5-fail beep_3
 
     def record_fail(self):
+        """Call when a ping fails or exceeds latency threshold.
+        Returns 'beep_1', 'beep_3', or None.
+
+        Silenced state: always returns None (alerts are suppressed).
+        Normal state:  fail=2 → 'beep_1'   (first warning)
+                       fail=5 → 'beep_3'   (final alert, then silenced)
+        """
         self.fails += 1
-        self.successes = 0
+        self.successes = 0          # any fail resets recovery progress
 
         if self.silenced:
-            return None
+            return None             # suppressed — do not beep
         if self.fails == 2:
-            return 'beep_1'
+            return 'beep_1'         # two consecutive fails: first alert
         if self.fails == 5:
-            self.silenced = True
+            self.silenced = True    # five fails: final alert, then silence
             return 'beep_3'
-        return None
+        return None                 # fail=1,3,4: no alert yet
 
     def record_success(self):
+        """Call when a ping succeeds within latency threshold.
+
+        Non-silenced: immediately resets the fail counter (one OK is
+        enough to stop a developing failure episode).
+
+        Silenced: requires 3 consecutive successes to unsilence and
+        reset. A single OK while silenced does NOT reset fails — this
+        prevents brief "flapping" recoveries from restarting the full
+        alert cycle.
+        """
         self.successes += 1
         if self.silenced:
             if self.successes >= 3:
                 self.fails = 0
                 self.successes = 0
-                self.silenced = False
-            # fails NOT reset until 3 successes
+                self.silenced = False  # fully recovered
+            # NOTE: fails is deliberately NOT reset after only 1-2 OKs
         else:
-            self.fails = 0
+            self.fails = 0             # normal state: 1 OK resets
 
     @property
     def in_fail_group(self):

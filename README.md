@@ -70,14 +70,24 @@ Time                   Host                 Target (IP)                      Res
 
 ## 声音告警
 
-网络异常时通过 `soundgen` 模块播放 sine wave 提示音：
+网络异常时通过 `soundgen` 模块播放 sine wave 提示音。
 
-| 阶段 | 行为 |
-|------|------|
-| 首次异常 (连续 2 次失败) | 750Hz / 300ms / 半音量 |
-| 持续异常 (连续 5 次失败) | 1000Hz / 300ms × 3 次（无间隔）|
-| 静默 | 持续失败不再提示 |
-| 恢复 (连续 3 次成功) | 重置到正常状态 |
+每个主机独立维护告警状态机：
+
+```
+正常 ──fail=2──→ 一声短鸣 ──fail=5──→ 三声短鸣 → 静默
+  ↑                                              │
+  └──────────── success=3 ←─────────────────────┘
+```
+
+| 阶段 | 触发条件 | 行为 |
+|------|----------|------|
+| 首次告警 | 连续 2 次失败 | 750Hz / 300ms / 半音量，单声 |
+| 最终告警 | 连续 5 次失败 | 1000Hz / 300ms × 3（无间隔），随后进入静默 |
+| 静默 | 已触发最终告警 | 后续失败不再发声，避免反复干扰 |
+| 恢复 | 静默状态下连续 3 次成功 | 清零计数器，解除静默，恢复正常监控 |
+
+> **关键设计：** 静默状态下，1-2 次成功不会重置计数器。只有连续 3 次成功才视为真正恢复，防止网络短暂波动导致告警反复触发。正常状态下（未静默），1 次成功即可清零失败计数。
 
 ## 许可
 
@@ -159,12 +169,22 @@ Each line shows: timestamp, address family tag `[IPv4]`/`[IPv6]`, host label, ta
 
 Audible alerts via `soundgen` module (sine wave) when network issues are detected.
 
-| Stage | Behavior |
-|-------|----------|
-| First alert (2 consecutive fails) | 750Hz / 300ms / half volume |
-| Repeat alert (5 consecutive fails) | 1000Hz / 300ms × 3 (no gap) |
-| Silenced | Further failures are silent |
-| Recovery (3 consecutive successes) | Resets to normal |
+Each host maintains an independent alert state machine:
+
+```
+normal ──fail=2──→ single beep ──fail=5──→ triple beep → silenced
+  ↑                                                    │
+  └──────────────── success=3 ←───────────────────────┘
+```
+
+| Stage | Trigger | Behavior |
+|-------|---------|----------|
+| First alert | 2 consecutive fails | 750Hz / 300ms / half volume, single beep |
+| Final alert | 5 consecutive fails | 1000Hz / 300ms × 3 (no gap), then enters silenced |
+| Silenced | After final alert | Further failures are silent, no more beeps |
+| Recovery | 3 consecutive successes while silenced | Resets counters, lifts silence, returns to normal |
+
+> **Key design:** While silenced, 1-2 successes do NOT reset the fail counter. Only 3 consecutive successes are treated as genuine recovery, preventing brief network blips from restarting the full alert cycle. In normal (non-silenced) state, a single success resets the counter.
 
 ## License
 
