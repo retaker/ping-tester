@@ -58,7 +58,7 @@ def classify_result(success, latency_ms, threshold):
 def play_alert_first(volume=100):
     """1000Hz sine wave, 600ms duration, 300ms warmup before tone."""
     from soundgen import Sound
-    Sound(frequency=1000, duration=600, warmup=300, volume=volume,
+    Sound(frequency=750, duration=300, warmup=300, volume=int(volume/2),
           waveform='sine').play()
 
 
