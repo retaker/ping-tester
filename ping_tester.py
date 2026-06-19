@@ -108,15 +108,12 @@ class AlertState:
         return None
 
     def record_success(self):
-        was_in_group = self.fails >= 2
         self.fails = 0
         self.successes += 1
 
         if self.silenced and self.successes >= 3:
             self.silenced = False
             self.successes = 0
-            return 'reset'
-        return 'reset' if was_in_group else None  # signal group-end for logging
 
     @property
     def in_fail_group(self):
@@ -273,7 +270,6 @@ def main():
     counter_lock = threading.Lock()
 
     for host in args.hosts:
-        label = host_label(host)
         alerts[host] = AlertState()
         fail_buf[host] = []
         sent[host] = 0
@@ -327,10 +323,13 @@ def main():
 
             with buf_lock:
                 fail_buf[host].append(entry)
-                if st.fails >= 2:
+                if st.fails == 2:
                     for e in fail_buf[host]:
                         logger.fail_log(e)
                     logger.fail_sep()
+                    fail_buf[host].clear()
+                elif st.fails > 2:
+                    logger.fail_log(entry)
                     fail_buf[host].clear()
 
             if action == 'beep_1':
