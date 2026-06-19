@@ -1,0 +1,159 @@
+# Ping Tester
+
+一个持续监控多主机网络连通性的命令行工具，支持 IPv4/IPv6 自动检测、延迟阈值判定和声音告警。
+
+## 安装
+
+```bash
+git clone https://github.com/<user>/ping-tester.git
+cd ping-tester
+```
+
+依赖 Python 3.8+，仅使用标准库和项目自带的 `soundgen` 模块，无需 `pip install`。
+
+## 快速开始
+
+```bash
+# 监控单个主机
+python ping_tester.py baidu.com
+
+# 监控多个主机
+python ping_tester.py baidu.com 8.8.8.8 google.com
+
+# 竞技游戏配置
+python ping_tester.py baidu.com 8.8.8.8 --latency-ms 150 --interval 1
+```
+
+按 `Ctrl+C` 停止。
+
+## 命令行参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `HOST ...` | (必填) | 一个或多个域名或 IP，IPv4/IPv6 自动检测 |
+| `--latency-ms` | 200 | 高延迟阈值 (ms)，超过视为 SLOW |
+| `--volume` | 100 | 提示音音量 0-100 |
+| `--interval` | 1 | 每轮 ping 间隔秒数 |
+
+## 输出说明
+
+### 控制台与日志
+
+```
+Time                   Host                 Target (IP)                      Result               Loss
+----------------------------------------------------------------------------------------------------------------
+2026-06-19 14:23:16    [IPv4] [baidu]       baidu.com (1.2.3.4)              OK (45ms)            loss: 0/10 (0.0%)
+2026-06-19 14:23:18    [IPv6] [google]      google.com (2404:6800::)          SLOW (320ms)         loss: 2/10 (20.0%)
+2026-06-19 14:23:20    [IPv4] [8.8.8.8]     8.8.8.8 (8.8.8.8)                FAIL (timeout)       loss: 5/10 (50.0%)
+```
+
+每行包含：时间戳、地址族标记 `[IPv4]`/`[IPv6]`、主机标签、目标 IP、结果和丢包率。
+
+### 结果分类
+
+| 结果 | 条件 |
+|------|------|
+| **OK** | ping 成功，延迟 ≤ 阈值 |
+| **SLOW** | ping 成功，延迟 > 阈值 |
+| **FAIL** | ping 失败（超时、不可达、DNS 失败等） |
+
+### 日志文件
+
+- `logs/YYYYMMDD-HHMMSS_Full_log` — 全部记录
+- `logs/YYYYMMDD-HHMMSS_Fail_log` — 仅 SLOW 和 FAIL
+
+## 声音告警
+
+网络异常时通过 `soundgen` 模块播放 sine wave 提示音：
+
+| 阶段 | 行为 |
+|------|------|
+| 首次异常 (连续 2 次失败) | 750Hz / 300ms / 半音量 |
+| 持续异常 (连续 5 次失败) | 1000Hz / 300ms × 3 次（无间隔）|
+| 静默 | 持续失败不再提示 |
+| 恢复 (连续 3 次成功) | 重置到正常状态 |
+
+## 许可
+
+MIT
+
+---
+
+# Ping Tester
+
+A CLI tool for continuous multi-host network connectivity monitoring with IPv4/IPv6 auto-detection, latency threshold classification, and audible alerts.
+
+## Installation
+
+```bash
+git clone https://github.com/<user>/ping-tester.git
+cd ping-tester
+```
+
+Requires Python 3.8+. No `pip install` needed — uses only stdlib and the bundled `soundgen` module.
+
+## Quick Start
+
+```bash
+# Single host
+python ping_tester.py baidu.com
+
+# Multiple hosts
+python ping_tester.py baidu.com 8.8.8.8 google.com
+
+# Competitive gaming
+python ping_tester.py baidu.com 8.8.8.8 --latency-ms 150 --interval 1
+```
+
+Press `Ctrl+C` to stop.
+
+## CLI Options
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `HOST ...` | (required) | One or more hostnames or IPs; IPv4/IPv6 auto-detected |
+| `--latency-ms` | 200 | Latency threshold in ms; exceeded → SLOW |
+| `--volume` | 100 | Beep volume 0–100 |
+| `--interval` | 1 | Seconds between ping rounds |
+
+## Output
+
+### Console & Logs
+
+```
+Time                   Host                 Target (IP)                      Result               Loss
+----------------------------------------------------------------------------------------------------------------
+2026-06-19 14:23:16    [IPv4] [baidu]       baidu.com (1.2.3.4)              OK (45ms)            loss: 0/10 (0.0%)
+2026-06-19 14:23:18    [IPv6] [google]      google.com (2404:6800::)          SLOW (320ms)         loss: 2/10 (20.0%)
+2026-06-19 14:23:20    [IPv4] [8.8.8.8]     8.8.8.8 (8.8.8.8)                FAIL (timeout)       loss: 5/10 (50.0%)
+```
+
+Each line shows: timestamp, address family tag `[IPv4]`/`[IPv6]`, host label, target IP, result, and loss rate.
+
+### Result Classification
+
+| Result | Condition |
+|--------|-----------|
+| **OK** | Ping succeeded, latency ≤ threshold |
+| **SLOW** | Ping succeeded, latency > threshold |
+| **FAIL** | Ping failed (timeout, unreachable, DNS failure, etc.) |
+
+### Log Files
+
+- `logs/YYYYMMDD-HHMMSS_Full_log` — All records
+- `logs/YYYYMMDD-HHMMSS_Fail_log` — SLOW and FAIL only
+
+## Sound Alerts
+
+Audible alerts via `soundgen` module (sine wave) when network issues are detected.
+
+| Stage | Behavior |
+|-------|----------|
+| First alert (2 consecutive fails) | 750Hz / 300ms / half volume |
+| Repeat alert (5 consecutive fails) | 1000Hz / 300ms × 3 (no gap) |
+| Silenced | Further failures are silent |
+| Recovery (3 consecutive successes) | Resets to normal |
+
+## License
+
+MIT
