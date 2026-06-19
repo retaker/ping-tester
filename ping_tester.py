@@ -63,17 +63,11 @@ def play_alert_first(volume=100):
 
 
 def play_alert_repeat(volume=100):
-    """3 short beeps: each 300ms, 150ms gap, 300ms warmup before first only."""
-    import time
+    """3 short beeps: each 300ms, warmup 300ms, no gap."""
     from soundgen import Sound
-    Sound(frequency=1000, duration=300, warmup=300, volume=volume,
-          waveform='sine').play()
-    time.sleep(0.15)
-    Sound(frequency=1000, duration=300, volume=volume,
-          waveform='sine').play()
-    time.sleep(0.15)
-    Sound(frequency=1000, duration=300, volume=volume,
-          waveform='sine').play()
+    for _ in range(3):
+        Sound(frequency=1000, duration=300, warmup=300, volume=volume,
+              waveform='sine').play()
 
 
 # ---------------------------------------------------------------------------
