@@ -1,9 +1,11 @@
 import io
-import math
 import struct
+import subprocess
+import sys
 import wave
 import pytest
-from soundgen import Sound
+from unittest import mock
+from soundgen import Sound, play
 
 
 class TestSoundInit:
@@ -129,3 +131,67 @@ class TestGenerate:
         samples = struct.unpack(f'<{len(frames)//2}h', frames)
         max_val = max(abs(v) for v in samples)
         assert max_val > 20000  # near 16-bit max
+
+
+class TestPlayFunction:
+    def test_play_creates_sound_and_calls_play(self):
+        with mock.patch('soundgen.Sound') as MockSound:
+            instance = MockSound.return_value
+            play(frequency=523, amplitude=0.8, volume=90, duration=200, waveform='square')
+            MockSound.assert_called_once_with(
+                frequency=523, amplitude=0.8, volume=90, duration=200,
+                waveform='square', sample_rate=44100
+            )
+            instance.play.assert_called_once()
+
+    def test_play_defaults(self):
+        with mock.patch('soundgen.Sound') as MockSound:
+            instance = MockSound.return_value
+            play()
+            MockSound.assert_called_once_with(
+                frequency=440, amplitude=1.0, volume=80, duration=1000,
+                waveform='sine', sample_rate=44100
+            )
+            instance.play.assert_called_once()
+
+
+class TestCLI:
+    def test_cli_help_output(self):
+        result = subprocess.run(
+            [sys.executable, 'soundgen.py', '--help'],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        assert 'Generate and play a sound' in result.stdout
+
+    def test_cli_save_creates_wav_file(self, tmp_path):
+        dest = tmp_path / 'test.wav'
+        result = subprocess.run(
+            [sys.executable, 'soundgen.py', '--freq', '523', '--amp', '0.5',
+             '--vol', '60', '--dur', '200', '--wave', 'square', '--save', str(dest)],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        assert f'Saved to {dest}' in result.stdout
+        assert dest.exists()
+        assert dest.stat().st_size > 44  # larger than empty WAV header
+        # Verify it's a valid WAV
+        with wave.open(str(dest), 'rb') as wf:
+            assert wf.getnchannels() == 1
+            assert wf.getsampwidth() == 2
+            assert wf.getframerate() == 44100
+            assert wf.getnframes() > 0
+
+    def test_cli_defaults_via_save(self, tmp_path):
+        """--save with no other args should use defaults (440 Hz, sine, 1s)."""
+        dest = tmp_path / 'default.wav'
+        result = subprocess.run(
+            [sys.executable, 'soundgen.py', '--save', str(dest)],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        assert dest.exists()
+        assert dest.stat().st_size > 44
+        with wave.open(str(dest), 'rb') as wf:
+            assert wf.getnchannels() == 1
+            assert wf.getframerate() == 44100

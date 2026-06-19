@@ -85,3 +85,32 @@ class Sound:
                 subprocess.run(['aplay', path], capture_output=True)
             except FileNotFoundError:
                 pass
+
+
+def play(frequency=440, amplitude=1.0, volume=80, duration=1000,
+         waveform='sine', sample_rate=44100):
+    """Generate and play a sound with the given parameters."""
+    Sound(frequency=frequency, amplitude=amplitude, volume=volume,
+          duration=duration, waveform=waveform,
+          sample_rate=sample_rate).play()
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate and play a sound')
+    parser.add_argument('--freq', type=float, default=440, help='Frequency in Hz (default: 440)')
+    parser.add_argument('--amp', type=float, default=1.0, help='Amplitude 0.0-1.0 (default: 1.0)')
+    parser.add_argument('--vol', type=int, default=80, help='Volume 0-100 (default: 80)')
+    parser.add_argument('--dur', type=int, default=1000, help='Duration in ms (default: 1000)')
+    parser.add_argument('--wave', choices=WAVEFORMS, default='sine', help='Waveform (default: sine)')
+    parser.add_argument('--rate', type=int, default=44100, help='Sample rate in Hz (default: 44100)')
+    parser.add_argument('--save', help='Save to WAV file instead of playing')
+    args = parser.parse_args()
+
+    s = Sound(frequency=args.freq, amplitude=args.amp, volume=args.vol,
+              duration=args.dur, waveform=args.wave, sample_rate=args.rate)
+    if args.save:
+        s.save(args.save)
+        print(f'Saved to {args.save}')
+    else:
+        s.play()
