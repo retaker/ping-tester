@@ -301,7 +301,7 @@ def main():
 
         # Console
         with print_lock:
-            print(f'{now:<22} [{family}] [{label:<12}] {target:<42} '
+            print(f'{now:<22} [{family}] [{label}] {target:<42} '
                   f'{result_str:<20} {loss_str}')
 
         # Full log
