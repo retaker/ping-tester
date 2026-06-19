@@ -15,7 +15,7 @@ WAVEFORMS = ('sine', 'square', 'sawtooth')
 
 class Sound:
     def __init__(self, frequency=440, amplitude=1.0, volume=80, duration=1000,
-                 waveform='sine', sample_rate=44100):
+                 waveform='sine', sample_rate=44100, warmup=0):
         self.frequency = max(20, min(20000, frequency))
         self.amplitude = max(0.0, min(1.0, amplitude))
         self.volume = max(0, min(100, volume))
@@ -24,9 +24,11 @@ class Sound:
             raise ValueError(f'waveform must be one of {WAVEFORMS}, got {waveform!r}')
         self.waveform = waveform
         self.sample_rate = max(1, sample_rate)
+        self.warmup = max(0, warmup)
 
     def _generate(self):
         nframes = int(self.sample_rate * self.duration / 1000)
+        warmup_frames = int(self.sample_rate * self.warmup / 1000)
         factor = self.amplitude * (self.volume / 100.0)
         raw = self._generate_samples(nframes, factor)
         buf = io.BytesIO()
@@ -34,6 +36,8 @@ class Sound:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(self.sample_rate)
+            if warmup_frames > 0:
+                wf.writeframes(b'\x00\x00' * warmup_frames)
             wf.writeframes(raw)
         return buf.getvalue()
 
@@ -91,11 +95,11 @@ class Sound:
 
 
 def play(frequency=440, amplitude=1.0, volume=80, duration=1000,
-         waveform='sine', sample_rate=44100):
+         waveform='sine', sample_rate=44100, warmup=0):
     """Generate and play a sound with the given parameters."""
     Sound(frequency=frequency, amplitude=amplitude, volume=volume,
           duration=duration, waveform=waveform,
-          sample_rate=sample_rate).play()
+          sample_rate=sample_rate, warmup=warmup).play()
 
 
 if __name__ == '__main__':
@@ -107,11 +111,13 @@ if __name__ == '__main__':
     parser.add_argument('--dur', type=int, default=1000, help='Duration in ms (default: 1000)')
     parser.add_argument('--wave', choices=WAVEFORMS, default='sine', help='Waveform (default: sine)')
     parser.add_argument('--rate', type=int, default=44100, help='Sample rate in Hz (default: 44100)')
+    parser.add_argument('--warmup', type=int, default=0, help='Silent lead-in before tone, in ms (default: 0)')
     parser.add_argument('--save', help='Save to WAV file instead of playing')
     args = parser.parse_args()
 
     s = Sound(frequency=args.freq, amplitude=args.amp, volume=args.vol,
-              duration=args.dur, waveform=args.wave, sample_rate=args.rate)
+              duration=args.dur, waveform=args.wave, sample_rate=args.rate,
+              warmup=args.warmup)
     if args.save:
         s.save(args.save)
         print(f'Saved to {args.save}')

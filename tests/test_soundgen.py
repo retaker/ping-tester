@@ -140,7 +140,7 @@ class TestPlayFunction:
             play(frequency=523, amplitude=0.8, volume=90, duration=200, waveform='square')
             MockSound.assert_called_once_with(
                 frequency=523, amplitude=0.8, volume=90, duration=200,
-                waveform='square', sample_rate=44100
+                waveform='square', sample_rate=44100, warmup=0
             )
             instance.play.assert_called_once()
 
@@ -150,7 +150,7 @@ class TestPlayFunction:
             play()
             MockSound.assert_called_once_with(
                 frequency=440, amplitude=1.0, volume=80, duration=1000,
-                waveform='sine', sample_rate=44100
+                waveform='sine', sample_rate=44100, warmup=0
             )
             instance.play.assert_called_once()
 
